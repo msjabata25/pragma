@@ -11,4 +11,6 @@ wheels/
 
 
 #env files
-app/rag/.env
+.env
+
+
