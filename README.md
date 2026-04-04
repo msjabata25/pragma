@@ -18,9 +18,9 @@ Pragma is an agentic code auditor that scans your repo, finds the issues, and ac
 
 ## How it works
 
-1. **Drop your repo in.** Pragma scans it with industry-standard tools (Semgrep + Snyk).
-2. **Issues get flagged.** Not just *what* broke, but *where* and *why*.
-3. **The agent kicks in.** It pulls the exact relevant code chunks and hands them to a judge model.
+1. **Drop your repo in.** Pragma accepts a ZIP upload or a GitHub URL and ingests it automatically.
+2. **Issues get flagged.** Semgrep scans your code deterministically — not guessing, actually finding.
+3. **The agent kicks in.** For each finding, it retrieves the exact relevant code chunks from a RAG pipeline and hands them to a judge model.
 4. **You get a clean report.** Plain English. Concrete fixes. Ready to copy-paste.
 
 No noise. No "potential vulnerability detected in 47 files good luck." Just the thing that's wrong and how to make it not wrong.
@@ -40,16 +40,35 @@ If you've ever deployed something and immediately closed the tab out of fear —
 ## Stack
 
 - **FastAPI** — backend
-- **LlamaIndex + ChromaDB** — RAG pipeline
-- **Semgrep + Snyk** — deterministic scanning
-- **Gemini Flash / 2.5 Pro / Claude Opus** — dynamic model routing based on repo size
-- **gemini-embedding-001** — embeddings
+- **ChromaDB + gemini-embedding-001** — RAG pipeline with AST-aware code chunking
+- **Semgrep** — deterministic vulnerability scanning
+- **Gemini 2.5 Flash** — RAG query generation + judge model
+- **Gemini 2.5 Pro / Claude Opus** — larger model routing (coming soon)
+
+---
+
+## Current Endpoints
+
+| Method | Endpoint | What it does |
+|--------|----------|--------------|
+| POST | `/ingest/github` | Ingest a repo by GitHub URL |
+| POST | `/ingest/zip` | Ingest a repo from a ZIP upload |
+| POST | `/query` | Query the RAG pipeline directly |
+| POST | `/audit` | Run the full agent loop on a repo *(in progress)* |
 
 ---
 
 ## Status
 
-🚧 Active development. RAG foundation is built and verified. Agent loop is next.
+🟡 **Core pipeline complete. Report generation in progress.**
+
+- ✅ AST-aware code chunker
+- ✅ Embedding + ChromaDB storage
+- ✅ GitHub + ZIP ingestion
+- ✅ Semgrep scanner
+- ✅ Agent loop (scan → RAG → explain → fix)
+- 🚧 Report builder
+- 🚧 Frontend
 
 This is not production-ready yet. But it will be.
 
