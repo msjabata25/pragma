@@ -3,18 +3,22 @@ name = "pragma"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12.11"
+requires-python = ">=3.12 , <3.13"
 dependencies = [
     "anthropic>=0.85.0",
-    "chromadb>=1.5.5",
+    "chromadb==0.5.23",
     "fastapi>=0.135.1",
     "gitpython>=3.1.46",
     "google-genai>=1.68.0",
     "google-generativeai>=0.8.6",
+    "httpx>=0.28.1",
     "llama-index>=0.14.18",
+    "markdownify>=1.2.2",
+    "pydantic-settings>=2.13.1",
     "python-dotenv>=1.2.2",
     "python-multipart>=0.0.22",
     "semgrep>=1.156.0",
+    "sentence-transformers>=5.3.0",
     "tree-sitter>=0.25.2",
     "tree-sitter-languages>=1.10.2",
     "uvicorn>=0.42.0",

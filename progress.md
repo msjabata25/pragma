@@ -1,53 +1,4 @@
-# Pragma — Agent Loop Progress
-
-## Session Summary
-Built the full agent loop (`loop.py`) connecting all existing Pragma modules into a working pipeline.
-
----
-
-## Files Built This Session
-
-### `agent/models.py`
-Defines the two core data structures:
-- `Finding` — raw Semgrep output (check_id, path, stLine, msg, severity)
-- `AuditResult` — Finding + agent output (finding, relevant_chunks, explanation, fix)
-
-### `agent/parser.py`
-- Function: `parse(semgrep_output: dict) -> list[Finding]`
-- Loops through `semgrep_output["results"]` and maps each result to a `Finding`
-- Handles nested fields: `result["start"]["line"]`, `result["extra"]["message"]` etc.
-
-### `scanner.py` (refactored)
-- Function: `scan(repo_path: str) -> dict`
-- Runs Semgrep via subprocess, returns parsed JSON
-- Uses `json.loads(result.stdout)`, try/except/else pattern
-- Model used: `gemini-2.5-flash` (2.0 was crashing)
-
-### `agent/loop.py` ✅ COMPLETE
-The main agent loop. Full pipeline:
-
-```
-scan() → parse() → [per finding]:
-  1. Flash generates RAG query (query_prompt)
-  2. embed_query() → query_vector
-  3. query_chunks() → chunks
-  4. Flash explains vuln + generates fix (audit_prompt) → JSON
-  5. AuditResult appended to results
-→ return list[AuditResult]
-```
-
-Key implementation details:
-- `repo_id = os.path.basename(repo_path)` — derived from path
-- `client` initialized once outside the loop
-- `chunks_text = "\n\n".join([c["content"] for c in chunks])` — for prompt injection
-- JSON stripping safety net before parsing Flash response:
-  ```python
-  clean = res.text.strip().removeprefix("```json").removesuffix("```").strip()
-  data = json.loads(clean)
-  ```
-- `relevant_chunks=[c["content"] for c in chunks]` — list[str] not joined string
-
----
+# Pragma — Progress
 
 ## Current Project Structure
 ```
@@ -55,49 +6,90 @@ pragma/
   app/
     agent/
       __init__.py
-      loop.py             ✅ done
+      loop.py             ✅ done (updated — knowledge base integration)
       models.py           ✅ done
       parser.py           ✅ done
+      reporter.py         ✅ done (new)
       scanner.py          ✅ done
     rag/
       __init__.py
-      chunker.py          ✅ done (prev session)
-      embedder.py         ✅ done (prev session)
-      ingestor.py         ✅ done (prev session)
-      store.py            ✅ done (prev session)
+      chunker.py          ✅ done
+      embedder.py         ✅ done
+      ingestor.py         ✅ done
+      store.py            ✅ done
+    knowledge/
+      __init__.py         ✅ done
+      md_chunker.py       ✅ done
+      ingest.py           ✅ done
+      query.py            ✅ done
+      fetch_sources.py    ✅ done (one-time, already run)
+      sources/
+        owasp/            ✅ 31 curated cheat sheets fetched
+        cwe/              ✅ 15 CWE definitions fetched
     main.py
   chroma_db/
-  output.json
-  progress.md
+    pragma_code           ✅ (code chunks per repo)
+    pragma_knowledge      ✅ 635 chunks ingested (sentence-transformers/all-MiniLM-L6-v2)
   pyproject.toml
   README.md
-  test_chunker.py
 ```
 
 ---
 
-## `app/main.py` — Existing FastAPI Endpoints
-Already wired up and working:
+## What Was Built
 
+### `agent/reporter.py` ✅
+- Input: `list[AuditResult]` + mode (`autopilot` / `manual`)
+- Output: self-contained HTML report with embedded MD download button (no server round-trip)
+- Autopilot mode: severity, file/line, plain-English explanation, fix
+- Manual mode: adds Semgrep rule ID, raw AST chunks, fix as diff block
+- `generate_report()` returns a single `Path` (HTML only — MD is embedded inside)
+
+### `knowledge/` ✅
+- `fetch_sources.py` — one-time fetcher, 46 sources (31 OWASP + 15 CWE), saves as .md files
+- `md_chunker.py` — splits docs by `##` / `###` headings into `KnowledgeChunk` objects
+- `ingest.py` — CLI (`python -m knowledge.ingest`), local embeddings via `sentence-transformers/all-MiniLM-L6-v2`, resumable, no API calls
+- `query.py` — queries `pragma_knowledge` collection, model cached via `lru_cache`, graceful `[]` fallback
+
+### `agent/loop.py` updated ✅
+- After code chunk retrieval, calls `query_knowledge(rag_query)` — reuses Flash's generated query, no extra LLM call
+- Knowledge chunks injected into audit prompt as separate section: `[source — heading]\ncontent`
+- Fully graceful — if KB not built, audit still runs normally
+
+---
+
+## Key Technical Decisions
+- **Two separate ChromaDB collections**: `pragma_code` (Gemini embeddings, 768-dim) and `pragma_knowledge` (MiniLM, 384-dim) — queried independently, no dimension conflict
+- **Local embeddings for knowledge base**: `all-MiniLM-L6-v2` via sentence-transformers — no rate limits, offline, ~90MB cached model
+- **Static knowledge base**: curated once, committed to repo, never re-fetched
+- **Python pinned to `>=3.12,<3.13`** — 3.14 breaks ChromaDB + pydantic
+
+---
+
+## FastAPI Endpoints
+
+### Existing (wired, working)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/ingest/github` | Ingest a GitHub repo by URL |
 | POST | `/ingest/zip` | Ingest a repo from uploaded ZIP file |
 | POST | `/query` | Query ChromaDB with a natural language string |
 
-Not yet wired: the agent loop (`run()`) has no endpoint yet — next session.
+### New (built, not yet wired into main.py)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/audit` | Run full agent loop, return JSON + write HTML report |
+| GET | `/audit/report/html` | Run audit, return HTML inline |
+| GET | `/audit/report/download` | Run audit, serve HTML file as download |
 
 ---
 
 ## What's Left
 
-### Next Session — Report Builder
-- Input: `list[AuditResult]`
-- Output: human-readable report (format TBD — markdown or HTML)
-- Should work for both Autopilot mode (vibe coders) and Manual mode (experienced devs)
+### Next Session
+- **Dynamic model routing** — Flash → Gemini 2.5 Pro → Claude Opus by repo size
+- **Wire `/audit` endpoints** into `main.py`
+- **Async loop** — parallel finding processing
 
 ### Future
-- Snyk integration (not installed yet — Semgrep only for now)
-- Dynamic model routing: Flash → Gemini 2.5 Pro → Claude Opus by repo size
-- FastAPI endpoints wiring `run()` to the REST layer
-- Async loop for parallel finding processing
+- Snyk integration
