@@ -1,18 +1,25 @@
 from dataclasses import dataclass
+from typing import Literal
 
+Persona = Literal["ceo", "public", "technical"]
 
 @dataclass
-class Finding : 
-    path : str #I added this cuz I'm curious if it will help
-    stLine  : int #Start line
-    msg : str 
-    severity : str
-    check_id : str #Most important thing to send to the rag
+class PersonaContent:
+    explanation: str
+    fix: str
+
+@dataclass
+class Finding:
+    path: str
+    stLine: int
+    msg: str 
+    severity: str
+    check_id: str
 
 @dataclass
 class AuditResult:
-    finding : Finding #Embeds findings into Audit so you dont have duplicate objs for the same thing
-    relevant_chunks : list[str]
-    explanation : str
-    fix : str
-
+    finding: Finding
+    relevant_chunks: list[str]
+    technical: PersonaContent
+    ceo: PersonaContent
+    public: PersonaContent

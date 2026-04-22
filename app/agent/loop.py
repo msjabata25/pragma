@@ -1,93 +1,109 @@
-from scanner import scan
-from parser import parse
-from models import Finding
-from models import AuditResult
-from google import genai
-import os
+from __future__ import annotations
+import asyncio
 import json
+import os
 from dotenv import load_dotenv
-from ..rag.embedder import embed_query
-from ..rag.store import query_chunks
-from knowledge import query_knowledge
+from groq import AsyncGroq
 
+from .scanner import scan
+from .parser import parse
+from .models import Finding, AuditResult, PersonaContent
+from .router import resolve_model, Model
+from ..rag.embedder import embed_query
+from ..rag.store import query_chunks, get_chunk_count
+from ..knowledge.query import query_knowledge
 
 load_dotenv()
-client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
+_SEMAPHORES: dict[Model, asyncio.Semaphore] = {
+    Model.SMALL:  asyncio.Semaphore(5),
+    Model.MEDIUM: asyncio.Semaphore(3),
+    Model.LARGE:  asyncio.Semaphore(2),
+}
 
-def run(repo_path: str):
-    repo_id = os.path.basename(repo_path)
-    results = []
-    scannedDict = scan(repo_path)
-    findings = parse(scannedDict)
+async def _process_finding(
+    finding: Finding,
+    repo_id: str,
+    model: Model,
+    client: AsyncGroq,
+) -> AuditResult:
+    sem = _SEMAPHORES[model]
 
-    for finding in findings:
-        # 1. Gen RAG query with Flash
-        query_prompt = f"""You are a security code analysis assistant.
-
-Given this vulnerability:
-- Rule: {finding.check_id}
-- Message: {finding.msg}
-- Severity: {finding.severity}
-
-Generate a single semantic search query to retrieve the most relevant code chunks 
-from a codebase. Return ONLY the query string, nothing else."""
-
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",  # better model and doesnt crash like 2.0 (Trust me, I tried)
-            contents=query_prompt
+    async with sem:
+        # 1. Generate RAG query
+        query_prompt = f"Generate a single semantic search query for vulnerability: {finding.check_id}. Return ONLY the query."
+        query_response = await client.chat.completions.create(
+            model=Model.SMALL.value,
+            messages=[{"role": "user", "content": query_prompt}],
         )
-        rag_query = response.text.strip()
+        rag_query = query_response.choices[0].message.content.strip()
 
-        # 2. Retrieve code chunks from ChromaDB
-        query_vector = embed_query(rag_query)
+        # 2. Retrieve code and knowledge
+        query_vector, knowledge_chunks = await asyncio.gather(
+            asyncio.to_thread(embed_query, rag_query),
+            asyncio.to_thread(query_knowledge, rag_query),
+        )
         chunks = query_chunks(repo_id, query_vector)
         chunks_text = "\n\n".join([c["content"] for c in chunks])
+        knowledge_text = "\n\n".join(f"[{k['source']}] {k['content']}" for k in knowledge_chunks)
 
-        # 3. Retrieve relevant knowledge chunks (OWASP, CWE, etc.)
-        #    Falls back to [] gracefully if KB hasn't been built yet
-        knowledge_chunks = query_knowledge(rag_query)
-        knowledge_text = "\n\n".join(
-            f"[{k['source']} — {k['heading']}]\n{k['content']}"
-            for k in knowledge_chunks
-        ) if knowledge_chunks else ""
-
-        # 4. Ask Flash to explain vuln + generate fix
-        knowledge_section = f"""
-Relevant security knowledge:
-{knowledge_text}
-""" if knowledge_text else ""
-
+        # 3. Persona-Aware Audit Prompt
         audit_prompt = f"""You are a security code consultant.
-
-Given this vulnerability:
-- Rule: {finding.check_id}
-- Message: {finding.msg}
-- Severity: {finding.severity}
-
-Relevant code from the repository:
+Vulnerability: {finding.check_id} ({finding.msg})
+Code Context:
 {chunks_text}
-{knowledge_section}
-Respond ONLY with a JSON object with exactly these two fields:
-{{
-    "explanation": "simple, clear explanation of the vulnerability",
-    "fix": "the corrected code or fix instructions"
-}}
-No preamble, no markdown, just the JSON."""
+Security Knowledge:
+{knowledge_text}
 
-        res = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=audit_prompt
+Respond ONLY with a JSON object with exactly these fields:
+{{
+    "technical": {{ "explanation": "Dev-focused root cause", "fix": "Technical fix" }},
+    "ceo": {{ "explanation": "Non-technical business risk", "fix": "High-level action" }},
+    "public": {{ "explanation": "Simple analogy/educational summary", "fix": "Approachable fix description" }}
+}}"""
+
+        audit_response = await client.chat.completions.create(
+            model=model.value,
+            messages=[{"role": "user", "content": audit_prompt}],
         )
-        clean = res.text.strip().removeprefix("```json").removesuffix("```").strip()
+        clean = audit_response.choices[0].message.content.strip().removeprefix("```json").removesuffix("```").strip()
         data = json.loads(clean)
 
-        # 5. Wrap into AuditResult
-        results.append(AuditResult(
-            finding=finding,
-            relevant_chunks=[c["content"] for c in chunks],
-            explanation=data["explanation"],
-            fix=data["fix"]
-        ))
+    return AuditResult(
+        finding=finding,
+        relevant_chunks=[c["content"] for c in chunks],
+        technical=PersonaContent(**data["technical"]),
+        ceo=PersonaContent(**data["ceo"]),
+        public=PersonaContent(**data["public"])
+    )
 
-    return results
+async def run_async(repo_path: str) -> list[AuditResult]:
+    client = AsyncGroq(api_key=os.environ["GROQ_API_KEY"])
+
+    repo_id = os.path.basename(repo_path)
+
+    chunk_count = await asyncio.to_thread(get_chunk_count, repo_id)
+    decision = resolve_model(repo_id)
+
+    scanned_dict = await asyncio.to_thread(scan, repo_path)
+    findings = parse(scanned_dict)
+    print(f"[DEBUG] findings count: {len(findings)}")
+
+    if not findings:
+        return []
+
+    tasks = [_process_finding(f, repo_id, decision.model, client) for f in findings]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    for r in results:
+        if isinstance(r, Exception):
+            print(f"[DEBUG] task failed: {type(r).__name__}: {r}")
+
+    return [r for r in results if not isinstance(r, Exception)]
+
+def run(repo_path: str) -> list[AuditResult]:
+    try:
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(run_async(repo_path))
+    except RuntimeError:
+        return asyncio.run(run_async(repo_path))

@@ -8,7 +8,8 @@ wheels/
 .vscode/
 # Virtual environments
 .venv
-
+repos/
+output/
 
 #env files
 .env

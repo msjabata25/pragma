@@ -36,25 +36,27 @@ pragma/
 
 ---
 
-## What Was Built
+## What Was Recently Built
 
-### `agent/reporter.py` ✅
-- Input: `list[AuditResult]` + mode (`autopilot` / `manual`)
-- Output: self-contained HTML report with embedded MD download button (no server round-trip)
-- Autopilot mode: severity, file/line, plain-English explanation, fix
-- Manual mode: adds Semgrep rule ID, raw AST chunks, fix as diff block
-- `generate_report()` returns a single `Path` (HTML only — MD is embedded inside)
+### Async Audit Loop (`agent/loop.py`) ✅
+- **Parallel Processing**: Uses `asyncio.gather` with semaphores to process multiple vulnerabilities simultaneously without hitting Gemini rate limits.
+- **Persona-Aware Logic**: Generates distinct `technical`, `ceo`, and `public` analysis for every finding.
+- **Dynamic Routing**: Integration with `get_chunk_count` ensures the model scales (Flash vs Pro) based on repo size.
 
-### `knowledge/` ✅
-- `fetch_sources.py` — one-time fetcher, 46 sources (31 OWASP + 15 CWE), saves as .md files
-- `md_chunker.py` — splits docs by `##` / `###` headings into `KnowledgeChunk` objects
-- `ingest.py` — CLI (`python -m knowledge.ingest`), local embeddings via `sentence-transformers/all-MiniLM-L6-v2`, resumable, no API calls
-- `query.py` — queries `pragma_knowledge` collection, model cached via `lru_cache`, graceful `[]` fallback
+### Persona-Based Reporting (`agent/reporter.py`) ✅
+- **Dynamic HTML**: Supports three viewing modes (CEO Executive Summary, Public, Technical Auditor).
+- **CEO Accordion**: Intelligently hides technical code blocks behind details tags for executive views.
+- **Embedded Downloads**: Inlines base64 Markdown data so users can download reports without extra server hits.
 
-### `agent/loop.py` updated ✅
-- After code chunk retrieval, calls `query_knowledge(rag_query)` — reuses Flash's generated query, no extra LLM call
-- Knowledge chunks injected into audit prompt as separate section: `[source — heading]\ncontent`
-- Fully graceful — if KB not built, audit still runs normally
+### Robust Ingestion (`rag/ingestor.py`) ✅
+- **Windows Compatibility**: Implemented `force_rmtree` with `os.chmod` to handle read-only `.git` pack files that previously caused `Access Denied` errors on Windows.
+
+---
+
+## Key Technical Decisions
+- **Strict Data Modeling**: Moved from a flat `AuditResult` to a nested structure (`technical`, `ceo`, `public` objects) to maintain data integrity across the RAG pipeline.
+- **Security-First Scanning**: Updated `scanner.py` to use `p/security-audit` instead of `auto` config to ensure "vibe coded" vulnerabilities are detected.
+- **Absolute Imports**: Shifted all internal calls to `app.<module>` format to support running the server from the root directory.
 
 ---
 
@@ -74,22 +76,17 @@ pragma/
 | POST | `/ingest/github` | Ingest a GitHub repo by URL |
 | POST | `/ingest/zip` | Ingest a repo from uploaded ZIP file |
 | POST | `/query` | Query ChromaDB with a natural language string |
+| POST | `/audit` | Runs full persona audit, returns JSON, writes HTML |
+| GET | `/audit/report/html` | Streams persona-specific HTML directly to browser |
+| GET | `/audit/report/download` | Serves persona-specific HTML as a file download |
 
-### New (built, not yet wired into main.py)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/audit` | Run full agent loop, return JSON + write HTML report |
-| GET | `/audit/report/html` | Run audit, return HTML inline |
-| GET | `/audit/report/download` | Run audit, serve HTML file as download |
+
 
 ---
 
 ## What's Left
 
-### Next Session
-- **Dynamic model routing** — Flash → Gemini 2.5 Pro → Claude Opus by repo size
-- **Wire `/audit` endpoints** into `main.py`
-- **Async loop** — parallel finding processing
-
 ### Future
-- Snyk integration
+- **Snyk integration** for dependency-level vulnerability scanning.
+- **Frontend Dashboard**: Transition from raw HTML reports to a React-based interface.
+- **Multi-Repo Comparison**: Allowing users to see security trends across multiple audited projects.
