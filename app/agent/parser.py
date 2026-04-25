@@ -13,7 +13,7 @@ def parse(semgrep_output: dict) -> list[Finding]:
             msg=result["extra"]["message"],
             severity=result["extra"]["severity"],
         )
-        key = (finding.path, finding.check_id)
+        key = (finding.path, finding.stLine)
         if key not in seen:
             seen[key] = finding
         else:

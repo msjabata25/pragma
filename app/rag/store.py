@@ -21,11 +21,18 @@ def store_chunks(repo_id : str , embedded_chunks : list[dict]):
     collection.upsert(ids=ids, embeddings=embeddings, documents=documents, metadatas=metadata)
     return len(ids)
 
-def query_chunks(repo_id : str , query_embedding : list[float] , n_results : int = 5):
+def query_chunks(repo_id: str, query_embedding: list[float], n_results: int = 3, threshold: float = 0.4):
     collection = get_or_create_collection(repo_id=repo_id)
-    results = collection.query(query_embeddings=[query_embedding], n_results=n_results, include=["documents", "metadatas", "distances"])
-    return [{"content": d, "metadata": m, "score": 1 - dist} for d, m, dist in zip(results["documents"][0], results["metadatas"][0], results["distances"][0])]
-
+    results = collection.query(
+        query_embeddings=[query_embedding],
+        n_results=n_results,
+        include=["documents", "metadatas", "distances"]
+    )
+    return [
+        {"content": d, "metadata": m, "score": 1 - dist}
+        for d, m, dist in zip(results["documents"][0], results["metadatas"][0], results["distances"][0])
+        if (1 - dist) >= threshold  # ✅ only keep chunks actually relevant to this finding
+    ]
 def get_chunk_count(repo_id: str) -> int:
     try:
         collection = get_or_create_collection(repo_id)

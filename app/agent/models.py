@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 Persona = Literal["ceo", "public", "technical"]
@@ -7,12 +7,13 @@ Persona = Literal["ceo", "public", "technical"]
 class PersonaContent:
     explanation: str
     fix: str
+    fixed_code: str | None = None  
 
 @dataclass
 class Finding:
     path: str
     stLine: int
-    msg: str 
+    msg: str
     severity: str
     check_id: str
 

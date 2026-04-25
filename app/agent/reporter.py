@@ -65,17 +65,25 @@ def _md_finding_block(result: AuditResult, mode: Persona, index: int) -> str:
 
 def _html_finding_card(result: AuditResult, mode: Persona, index: int) -> str:
     f = result.finding
-    content = getattr(result, mode) 
+    content = getattr(result, mode)
     
     sev = f.severity.upper()
     color = SEVERITY_COLOR.get(sev, "#718096")
     emoji = SEVERITY_EMOJI.get(sev, "⚪")
-    
-    # Logic for Option B: Hide code chunks for CEOs using an accordion
+
+    # ✅ Fixed code block — technical persona only
+    fixed_code_section = ""
+    if content.fixed_code:
+        fixed_code_section = f"""
+    <div class="section">
+        <h4>Fixed Code</h4>
+        <pre><code>{html_lib.escape(content.fixed_code.strip())}</code></pre>
+    </div>"""
+
+    # existing code block logic unchanged...
     code_section = ""
     if result.relevant_chunks:
         chunks_html = "".join(f"<pre><code>{html_lib.escape(c.strip())}</code></pre>" for c in result.relevant_chunks)
-        
         if mode == "ceo":
             code_section = f"""
             <details style="margin-top: 1rem; border: 1px solid #2d3748; padding: 0.5rem; border-radius: 6px;">
@@ -101,6 +109,7 @@ def _html_finding_card(result: AuditResult, mode: Persona, index: int) -> str:
                 <h4>Recommendation</h4>
                 <p><strong>{html_lib.escape(content.fix)}</strong></p>
             </div>
+            {fixed_code_section}
             {code_section}
         </div>
     </div>"""

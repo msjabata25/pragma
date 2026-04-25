@@ -59,9 +59,9 @@ Security Knowledge:
 
 Respond ONLY with a valid JSON object with exactly these fields, no markdown fences:
 {{
-    "technical": {{ "explanation": "Dev-focused root cause", "fix": "Technical fix" }},
-    "ceo":       {{ "explanation": "Non-technical business risk", "fix": "High-level action" }},
-    "public":    {{ "explanation": "Simple analogy/educational summary", "fix": "Approachable fix description" }}
+    "technical": {{ "explanation": "Dev-focused root cause", "fix": "Technical fix description", "fixed_code": "The full corrected function or block, not just the changed line. Include enough surrounding context that a beginner can copy-paste it directly as a replacement." }},
+    "ceo":       {{ "explanation": "Non-technical business risk", "fix": "High-level action", "fixed_code": "The full corrected function or block, not just the changed line. Include enough surrounding context that a beginner can copy-paste it directly as a replacement." }},
+    "public":    {{ "explanation": "Simple analogy/educational summary", "fix": "Approachable fix description", "fixed_code": "The full corrected function or block, not just the changed line. Include enough surrounding context that a beginner can copy-paste it directly as a replacement." }}
 }}"""
 
         audit_response = await client.chat.completions.create(
