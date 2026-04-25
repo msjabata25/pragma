@@ -4,7 +4,11 @@ import json
 def scan(repo_path: str) -> dict:
     try:
         result = subprocess.run(
-            ["uv", "run", "semgrep", "scan", "--config", "p/security-audit","--no-git-ignore", "--json", repo_path],
+            ["uv", "run", "semgrep", "scan",
+ "--config", "p/security-audit",
+ "--config", "p/python",
+ "--config", "p/secrets",
+ "--no-git-ignore", "--json", repo_path],
             capture_output=True,
             encoding="utf-8",
             errors="ignore",

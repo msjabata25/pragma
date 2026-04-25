@@ -14,7 +14,7 @@ from app.rag.ingestor import ingest_zip, ingest_github
 from app.rag.embedder import embed_query
 from app.rag.store import query_chunks
 from fastapi.responses import FileResponse, HTMLResponse
-
+from app.agent.loop import run, run_async
 load_dotenv()
 app = FastAPI(title="Pragma AI Code Auditor")
 
@@ -78,15 +78,15 @@ def audit_repo(
     repo_id: str,
     mode: Persona = Query(default="technical")
 ):
-    
-    repo_path = Path("repos") / repo_id # Adjust based on where you store repos
+    repo_path = Path("repos") / repo_id
     print(f"[DEBUG] Looking for repo at: {repo_path.resolve()}")
     print(f"[DEBUG] Path exists: {repo_path.exists()}")
-    results = run(str(repo_path))
-    print(f"[DEBUG] results count: {len(results)}")
+
+    # ✅ Only scan/parse here — run() is for the report endpoints
     scanned = scan(str(repo_path))
     findings = parse(scanned)
- 
+    print(f"[DEBUG] findings count: {len(findings)}")
+
     return {
         "repo": repo_id,
         "total_findings": len(findings),
@@ -99,21 +99,34 @@ def audit_repo(
                 "message": f.msg,
             }
             for f in findings
-        ]
+        ],
     }
 @app.get("/audit/report/html", response_class=HTMLResponse)
-def get_html_report(
-    repo_id: str, 
+async def get_html_report(
+    repo_id: str,
     mode: Persona = Query(default="ceo")
 ):
-    """
-    Run audit and return the HTML report inline for browser viewing.
-    Defaulting to 'ceo' as it's the priority persona.
-    """
     repo_path = _get_repo_path(repo_id)
-    results = run(repo_path)
+    results = await run_async(repo_path)  # ✅ await, not run()
     repo_name = os.path.basename(repo_path.rstrip("/"))
     return build_html(results, mode=mode, repo_name=repo_name)
+
+
+@app.get("/audit/report/download")
+async def download_report(
+    repo_id: str,
+    mode: Persona = Query(default="technical"),
+):
+    repo_path = _get_repo_path(repo_id)
+    results = await run_async(repo_path)  # ✅ await, not run()
+    repo_name = os.path.basename(repo_path.rstrip("/"))
+    html_path = generate_report(results, mode=mode, repo_name=repo_name, output_dir="output")
+    return FileResponse(
+        path=html_path,
+        media_type="text/html",
+        filename=f"pragma_{mode}_{repo_name}.html"
+    )
+
 
 @app.get("/audit/report/download")
 def download_report(

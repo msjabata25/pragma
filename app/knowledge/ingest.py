@@ -21,7 +21,7 @@ from pathlib import Path
 import chromadb
 from sentence_transformers import SentenceTransformer
 
-from knowledge.md_chunker import chunk_file, KnowledgeChunk
+from app.knowledge.md_chunker import chunk_file, KnowledgeChunk
 
 # ── Config ────────────────────────────────────────────────────
 COLLECTION_NAME  = "pragma_knowledge"
@@ -126,7 +126,7 @@ def main() -> None:
     parser.add_argument(
         "--sources-dir",
         type=Path,
-        default=Path("knowledge/sources"),
+        default=Path("app/knowledge/sources"),
         help="Directory containing curated .md source files (default: knowledge/sources)",
     )
     parser.add_argument(

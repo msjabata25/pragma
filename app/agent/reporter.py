@@ -171,7 +171,7 @@ def generate_report(
     """Writes the persona-based HTML report to the output directory."""
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
-
+    print(f"[DEBUG] Writing report to: {out.resolve()}")
     slug = repo_name.replace("/", "_").replace(" ", "_")
     html_path = out / f"pragma_{mode}_{slug}.html"
     html_path.write_text(build_html(results, mode, repo_name), encoding="utf-8")
