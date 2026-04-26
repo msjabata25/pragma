@@ -129,7 +129,7 @@ This is not production-ready. But the core pipeline is real, it runs, and it wor
 
 ```bash
 # Clone and install
-git clone https://github.com/yourhandle/pragma
+git clone https://github.com/msjabata25/pragma
 cd pragma
 uv sync
 

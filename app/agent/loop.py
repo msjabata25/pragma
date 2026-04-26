@@ -16,8 +16,7 @@ from ..knowledge.query import query_knowledge
 
 load_dotenv()
 
-# ❌ REMOVED: module-level semaphores were causing cross-loop KeyError: '_type'
-# They're now created fresh inside run_async per event loop lifecycle
+
 
 
 async def _process_finding(
@@ -25,25 +24,19 @@ async def _process_finding(
     repo_id: str,
     model: Model,
     client: AsyncGroq,
-    semaphores: dict[Model, asyncio.Semaphore],  # ✅ passed in, not global
+    semaphores: dict[Model, asyncio.Semaphore],
 ) -> AuditResult:
     sem = semaphores[model]
 
     async with sem:
-        query_prompt = (
-            f"Generate a single semantic search query for vulnerability: "
-            f"{finding.check_id}. Return ONLY the query string, no explanation."
-        )
-        query_response = await client.chat.completions.create(
-            model=Model.SMALL.value,
-            messages=[{"role": "user", "content": query_prompt}],
-        )
-        rag_query = query_response.choices[0].message.content.strip()
+        
+        code_query = f"{finding.check_id} {finding.msg}"   
+        knowledge_query = finding.msg                        
 
         query_vector, knowledge_chunks = await asyncio.gather(
-            asyncio.to_thread(embed_query, rag_query),
-            asyncio.to_thread(query_knowledge, rag_query),
-        )
+    asyncio.to_thread(embed_query, code_query),
+    asyncio.to_thread(query_knowledge, knowledge_query),
+)
         chunks = query_chunks(repo_id, query_vector)
         chunks_text = "\n\n".join([c["content"] for c in chunks])
         knowledge_text = "\n\n".join(
@@ -71,9 +64,9 @@ Respond ONLY with a valid JSON object with exactly these fields, no markdown fen
 
         raw = audit_response.choices[0].message.content.strip()
 
-        # ✅ More robust fence stripping — handles ```json, ```, or bare JSON
+        
         if raw.startswith("```"):
-            raw = raw.split("\n", 1)[-1]  # drop the ```json line
+            raw = raw.split("\n", 1)[-1]
         if raw.endswith("```"):
             raw = raw.rsplit("```", 1)[0]
         raw = raw.strip()
@@ -97,7 +90,7 @@ Respond ONLY with a valid JSON object with exactly these fields, no markdown fen
 
 
 async def run_async(repo_path: str) -> list[AuditResult]:
-    # ✅ Semaphores created here — bound to THIS event loop, not a stale one
+    
     semaphores: dict[Model, asyncio.Semaphore] = {
         Model.SMALL:  asyncio.Semaphore(5),
         Model.MEDIUM: asyncio.Semaphore(3),
