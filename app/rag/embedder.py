@@ -1,18 +1,17 @@
 from google import genai
 from google.genai import types
 import os
+import time
 from .chunker import CodeChunk
 from dotenv import load_dotenv
 
 load_dotenv()
 
-
-
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 EMBEDDING_MODEL = "models/gemini-embedding-001"
+BATCH_SIZE = 50  # Gemini supports up to 100 per batch call
 
 
-#embeds user query
 def embed_query(query: str) -> list[float]:
     response = client.models.embed_content(
         model=EMBEDDING_MODEL,
@@ -22,18 +21,36 @@ def embed_query(query: str) -> list[float]:
     return response.embeddings[0].values
 
 
-#embeds chunks -> turning words into vector values
 def embed_chunks(chunks: list[CodeChunk]) -> list[dict]:
     results = []
-    for chunk in chunks:
-        text = f"File: {chunk.file_path}\nType: {chunk.chunk_type} '{chunk.name}'\n\n{chunk.content}"
-        response = client.models.embed_content(
-            model=EMBEDDING_MODEL,
-            contents=text,
-            config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
-        )
-        results.append({
-            "chunk": chunk,
-            "embedding": response.embeddings[0].values
-        })
+    
+    for i in range(0, len(chunks), BATCH_SIZE):
+        batch = chunks[i : i + BATCH_SIZE]
+        texts = [
+            f"File: {c.file_path}\nType: {c.chunk_type} '{c.name}'\n\n{c.content}"
+            for c in batch
+        ]
+        
+        try:
+            response = client.models.embed_content(
+                model=EMBEDDING_MODEL,
+                contents=texts,  # list = batch call
+                config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
+            )
+        except Exception as e:
+            # rate limit or API error — wait and retry once
+            print(f"[embedder] batch {i//BATCH_SIZE} failed: {e}, retrying in 10s…")
+            time.sleep(10)
+            response = client.models.embed_content(
+                model=EMBEDDING_MODEL,
+                contents=texts,
+                config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
+            )
+        
+        for chunk, embedding in zip(batch, response.embeddings):
+            results.append({
+                "chunk": chunk,
+                "embedding": embedding.values
+            })
+    
     return results

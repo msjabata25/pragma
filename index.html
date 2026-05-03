@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pragma. — ai code auditor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0a;
+      --surface: #111111;
+      --surface2: #1a1a1a;
+      --border: #2a2a2a;
+      --border2: #3a3a3a;
+      --text: #f0ede8;
+      --muted: #888880;
+      --accent: #d4f57a;
+      --accent2: #7affd4;
+      --danger: #ff6b6b;
+      --warn: #ffcc5c;
+      --info: #7ac8ff;
+      --mono: 'Space Mono', monospace;
+      --display: 'Syne', sans-serif;
+    }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    .app { max-width: 880px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+
+    .header {
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+      border-bottom: 1px solid var(--border2);
+      padding-bottom: 1.5rem;
+    }
+    .logo { font-family: var(--display); font-size: 2rem; font-weight: 800; letter-spacing: -1px; color: var(--accent); }
+    .logo span { color: var(--muted); font-weight: 400; }
+    .tagline { color: var(--muted); font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; }
+    .badge {
+      margin-left: auto; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 3px 10px; border: 1px solid var(--border2); color: var(--muted); border-radius: 2px;
+    }
+    .badge.live { border-color: var(--accent); color: var(--accent); }
+
+    .steps { display: flex; margin-bottom: 2rem; }
+    .step-pill {
+      flex: 1; text-align: center; padding: 6px 0; font-size: 10px;
+      letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+      border-bottom: 2px solid var(--border); transition: all 0.2s;
+    }
+    .step-pill.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .step-pill.done   { color: var(--accent2); border-bottom-color: var(--accent2); }
+
+    .panel { display: none; animation: fadeIn 0.25s ease; }
+    .panel.active { display: block; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Upload */
+    .upload-area {
+      border: 1px dashed var(--border2); border-radius: 4px; padding: 3rem 2rem;
+      text-align: center; cursor: pointer; transition: all 0.2s; background: var(--surface);
+    }
+    .upload-area:hover, .upload-area.dragover { border-color: var(--accent); background: #111800; }
+    .upload-icon { font-size: 2rem; margin-bottom: 1rem; display: block; color: var(--muted); }
+    .upload-area h2 { font-family: var(--display); font-weight: 700; font-size: 1.1rem; color: var(--text); margin-bottom: 0.5rem; }
+    .upload-area p  { color: var(--muted); font-size: 11px; margin-bottom: 1.5rem; }
+    #file-input { display: none; }
+
+    .or-divider {
+      display: flex; align-items: center; gap: 1rem;
+      margin: 1.5rem 0; color: var(--muted); font-size: 11px;
+    }
+    .or-divider::before, .or-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    .input-row { display: flex; gap: 8px; }
+
+    input[type="text"], input[type="url"] {
+      flex: 1; background: var(--surface2); border: 1px solid var(--border2);
+      color: var(--text); font-family: var(--mono); font-size: 12px;
+      padding: 8px 12px; border-radius: 3px; outline: none; transition: border-color 0.2s;
+    }
+    input[type="text"]:focus, input[type="url"]:focus { border-color: var(--accent); }
+    input::placeholder { color: var(--muted); }
+
+    /* Buttons */
+    .btn {
+      font-family: var(--mono); font-size: 11px; letter-spacing: 0.05em;
+      text-transform: uppercase; padding: 8px 16px; border-radius: 3px;
+      cursor: pointer; transition: all 0.15s; white-space: nowrap; border: none;
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: #0a0a0a; font-weight: 700; }
+    .btn-primary:hover:not(:disabled) { background: #c8ef6a; }
+    .btn-primary:active:not(:disabled) { transform: scale(0.97); }
+    .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border2) !important; }
+    .btn-ghost:hover:not(:disabled) { border-color: var(--text) !important; color: var(--text); }
+
+    /* Mode / Persona toggles */
+    .section-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 1.5rem 0 8px; }
+    .mode-toggle { display: flex; gap: 8px; }
+    .mode-btn {
+      flex: 1; padding: 10px; border: 1px solid var(--border2); background: var(--surface);
+      color: var(--muted); font-family: var(--mono); font-size: 11px;
+      cursor: pointer; border-radius: 3px; text-align: left; transition: all 0.15s;
+    }
+    .mode-btn.selected { border-color: var(--accent2); color: var(--accent2); background: #001a13; }
+    .mode-btn .mode-name { font-weight: 700; display: block; margin-bottom: 2px; font-size: 12px; }
+    .mode-btn .mode-desc { font-size: 10px; color: var(--muted); }
+    .mode-btn.selected .mode-desc { color: #4aaaa0; }
+
+    /* Terminal */
+    .scan-terminal { background: var(--surface); border: 1px solid var(--border2); border-radius: 4px; overflow: hidden; }
+    .terminal-bar {
+      background: var(--surface2); padding: 8px 14px; display: flex;
+      align-items: center; gap: 8px; border-bottom: 1px solid var(--border);
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot.r { background: #ff5f57; } .dot.y { background: #ffbd2e; } .dot.g { background: #28c841; }
+    .terminal-title { font-size: 11px; color: var(--muted); margin-left: 4px; }
+    .terminal-body {
+      padding: 1rem 1.25rem; font-size: 12px; line-height: 1.8;
+      min-height: 200px; overflow-y: auto; max-height: 300px;
+    }
+    .log-line { display: flex; gap: 10px; }
+    .log-time { color: var(--muted); min-width: 60px; flex-shrink: 0; }
+    .log-msg { color: var(--text); }
+    .log-msg.ok   { color: var(--accent2); }
+    .log-msg.warn { color: var(--warn); }
+    .log-msg.err  { color: var(--danger); }
+    .log-msg.info { color: var(--info); }
+    .log-msg.dim  { color: var(--muted); }
+
+    .progress-bar { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; margin: 1rem 0; }
+    .progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.4s ease; width: 0%; }
+
+    .scan-status-line { font-size: 11px; color: var(--muted); text-align: center; min-height: 1.4em; }
+
+    /* Error banner */
+    .error-banner {
+      background: #1a0000; border: 1px solid var(--danger); border-radius: 3px;
+      padding: 10px 14px; margin-top: 1rem; font-size: 12px; color: var(--danger); display: none;
+    }
+
+    /* Report */
+    .results-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+    .results-title { font-family: var(--display); font-weight: 800; font-size: 1.4rem; color: var(--text); }
+
+    .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 1.5rem; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 3px; padding: 12px 14px; }
+    .stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 4px; }
+    .stat-val { font-family: var(--display); font-size: 1.6rem; font-weight: 800; }
+    .stat-val.crit { color: var(--danger); }
+    .stat-val.high { color: #ff9066; }
+    .stat-val.warn { color: var(--warn); }
+    .stat-val.info { color: var(--info); }
+    .stat-val.ok   { color: var(--accent2); }
+
+    .persona-tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 1.25rem; }
+    .persona-tab {
+      padding: 7px 16px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--muted); cursor: pointer; border: none; border-bottom: 2px solid transparent;
+      margin-bottom: -1px; transition: all 0.15s; background: none; font-family: var(--mono);
+    }
+    .persona-tab:hover { color: var(--text); }
+    .persona-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    .filter-row { display: flex; gap: 8px; margin-bottom: 1rem; flex-wrap: wrap; }
+    .filter-btn {
+      font-family: var(--mono); font-size: 10px; text-transform: uppercase;
+      letter-spacing: 0.06em; padding: 4px 10px; border: 1px solid var(--border2);
+      background: transparent; color: var(--muted); border-radius: 2px; cursor: pointer; transition: all 0.15s;
+    }
+    .filter-btn:hover, .filter-btn.active { border-color: var(--text); color: var(--text); background: var(--surface2); }
+
+    /* Finding cards */
+    .finding-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-left: 3px solid var(--border2); border-radius: 3px;
+      margin-bottom: 10px; overflow: hidden;
+    }
+    .finding-card.sev-critical { border-left-color: var(--danger); }
+    .finding-card.sev-high     { border-left-color: #ff9066; }
+    .finding-card.sev-medium   { border-left-color: var(--warn); }
+    .finding-card.sev-low      { border-left-color: var(--info); }
+
+    .finding-header {
+      padding: 10px 14px; cursor: pointer; display: flex;
+      align-items: center; gap: 10px; user-select: none;
+    }
+    .finding-header:hover { background: var(--surface2); }
+
+    .sev-badge {
+      font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 2px 7px; border-radius: 2px; font-weight: 700; flex-shrink: 0;
+    }
+    .sev-badge.critical { background: #3a0000; color: var(--danger); }
+    .sev-badge.high     { background: #2d1500; color: #ff9066; }
+    .sev-badge.medium   { background: #2a1e00; color: var(--warn); }
+    .sev-badge.low      { background: #00152a; color: var(--info); }
+
+    .finding-title { flex: 1; font-size: 12px; color: var(--text); }
+    .finding-file  { font-size: 10px; color: var(--muted); font-family: var(--mono); }
+    .finding-chevron { color: var(--muted); font-size: 10px; transition: transform 0.2s; flex-shrink: 0; }
+    .finding-card.open .finding-chevron { transform: rotate(90deg); }
+
+    .finding-body { display: none; padding: 0 14px 14px; border-top: 1px solid var(--border); }
+    .finding-card.open .finding-body { display: block; }
+
+    .finding-section { margin-top: 12px; }
+    .finding-section-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 6px; }
+
+    .code-block {
+      background: #000; border: 1px solid var(--border); border-radius: 3px;
+      padding: 10px 12px; font-size: 11px; line-height: 1.7;
+      overflow-x: auto; color: #c8ffa0; white-space: pre;
+    }
+    .fix-block {
+      background: #001a0a; border: 1px solid #1a4020; border-radius: 3px;
+      padding: 10px 12px; font-size: 11px; line-height: 1.7; color: var(--accent2); white-space: pre;
+    }
+    .explanation-block { font-size: 12px; color: var(--text); line-height: 1.7; padding: 6px 0; }
+
+    .empty-state { text-align: center; padding: 3rem; color: var(--muted); }
+    .empty-state .big { font-size: 2.5rem; font-family: var(--display); font-weight: 800; color: var(--border2); margin-bottom: 0.5rem; }
+
+    .actions-row {
+      display: flex; gap: 8px; margin-top: 1.5rem;
+      padding-top: 1.25rem; border-top: 1px solid var(--border);
+    }
+
+    .footer-note {
+      margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border);
+      font-size: 10px; color: var(--muted); display: flex; justify-content: space-between;
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <div class="logo">pragma<span>.</span></div>
+    <div class="tagline">ai code auditor</div>
+    <div class="badge live" id="status-badge">● alpha</div>
+  </div>
+
+  <div class="steps">
+    <div class="step-pill active" id="step-1">01 / Upload</div>
+    <div class="step-pill"        id="step-2">02 / Configure</div>
+    <div class="step-pill"        id="step-3">03 / Scan</div>
+    <div class="step-pill"        id="step-4">04 / Report</div>
+  </div>
+
+  <!-- ── PANEL 1: Upload ── -->
+  <div class="panel active" id="panel-upload">
+    <div class="upload-area" id="drop-zone">
+      <span class="upload-icon">⊕</span>
+      <h2>Drop your repo here</h2>
+      <p>ZIP archive — max 50MB · all languages supported</p>
+      <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">Choose ZIP file</button>
+      <input type="file" id="file-input" accept=".zip" />
+    </div>
+
+    <div class="or-divider">or paste a github url</div>
+
+    <div class="input-row">
+      <input type="url" id="github-url" placeholder="https://github.com/yourname/yourrepo" />
+      <button class="btn btn-primary" id="github-btn" onclick="handleGithub()">Fetch →</button>
+    </div>
+
+    <div class="error-banner" id="upload-error"></div>
+
+    <div class="footer-note">
+      <span>pragma does not store your code beyond this session</span>
+      <span>@p_rag_ma</span>
+    </div>
+  </div>
+
+  <!-- ── PANEL 2: Configure ── -->
+  <div class="panel" id="panel-configure">
+    <p style="color:var(--muted);font-size:11px;margin-bottom:1.5rem;">
+      Source: <span id="source-name" style="color:var(--accent2)">—</span>
+      &nbsp;·&nbsp;
+      Repo ID: <span id="source-repo-id" style="color:var(--muted)">—</span>
+    </p>
+
+    <div class="section-label">Scan mode</div>
+    <div class="mode-toggle">
+      <button class="mode-btn selected" id="mode-auto" onclick="selectMode('auto')">
+        <span class="mode-name">Autopilot</span>
+        <span class="mode-desc">Full scan, plain English report. Just ship it.</span>
+      </button>
+      <button class="mode-btn" id="mode-manual" onclick="selectMode('manual')">
+        <span class="mode-name">Manual</span>
+        <span class="mode-desc">You pick what gets flagged. For the devs.</span>
+      </button>
+    </div>
+
+    <div class="section-label">Default report persona</div>
+    <div class="mode-toggle">
+      <button class="mode-btn selected" id="persona-tech" onclick="selectPersona('tech')">
+        <span class="mode-name">Technical</span>
+        <span class="mode-desc">Full CVE context, code diffs, CWE refs.</span>
+      </button>
+      <button class="mode-btn" id="persona-ceo" onclick="selectPersona('ceo')">
+        <span class="mode-name">Executive</span>
+        <span class="mode-desc">Risk summary. No code. Boardroom-ready.</span>
+      </button>
+      <button class="mode-btn" id="persona-pub" onclick="selectPersona('pub')">
+        <span class="mode-name">Public</span>
+        <span class="mode-desc">Plain English. Zero jargon.</span>
+      </button>
+    </div>
+
+    <div style="margin-top:1.5rem; display:flex; gap:8px;">
+      <button class="btn btn-ghost" onclick="goStep(1)">← Back</button>
+      <button class="btn btn-primary" onclick="startAudit()">Run audit →</button>
+    </div>
+
+    <div class="footer-note">
+      <span>semgrep p/security-audit · chromadb rag · gemini flash / pro / claude opus</span>
+      <span></span>
+    </div>
+  </div>
+
+  <!-- ── PANEL 3: Scan ── -->
+  <div class="panel" id="panel-scan">
+    <div class="scan-terminal">
+      <div class="terminal-bar">
+        <div class="dot r"></div>
+        <div class="dot y"></div>
+        <div class="dot g"></div>
+        <span class="terminal-title" id="terminal-title">pragma — scanning</span>
+      </div>
+      <div class="terminal-body" id="terminal-body"></div>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+    <p class="scan-status-line" id="scan-status">Initializing…</p>
+    <div class="error-banner" id="scan-error"></div>
+  </div>
+
+  <!-- ── PANEL 4: Report ── -->
+  <div class="panel" id="panel-report">
+    <div class="results-header">
+      <div class="results-title">Audit Report</div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-ghost" onclick="goStep(1)">New audit</button>
+        <button class="btn btn-primary" onclick="downloadJSON()">Download JSON ↓</button>
+      </div>
+    </div>
+
+    <div class="stats-row" id="stats-row"></div>
+
+    <div class="persona-tabs">
+      <button class="persona-tab active" onclick="switchPersonaView('technical', this)">Technical</button>
+      <button class="persona-tab"        onclick="switchPersonaView('executive', this)">Executive</button>
+      <button class="persona-tab"        onclick="switchPersonaView('public', this)">Public</button>
+    </div>
+
+    <div class="filter-row" id="filter-row"></div>
+    <div id="findings-list"></div>
+
+    <div class="actions-row">
+      <button class="btn btn-ghost" onclick="goStep(1)">← New audit</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ── Config ──────────────────────────────────────────────────────────────
+  const API = 'http://localhost:8000';
+
+  // ── State ────────────────────────────────────────────────────────────────
+  const state = {
+    step: 1,
+    repoId: null,
+    sourceName: null,
+    mode: 'auto',
+    persona: 'tech',
+    findings: [],
+    filter: 'all',
+    personaView: 'technical',
+  };
+
+  // ── Step navigation ───────────────────────────────────────────────────────
+  function goStep(n) {
+    state.step = n;
+    document.querySelectorAll('.step-pill').forEach((el, i) => {
+      el.classList.remove('active', 'done');
+      if (i + 1 < n)  el.classList.add('done');
+      if (i + 1 === n) el.classList.add('active');
+    });
+    ['panel-upload','panel-configure','panel-scan','panel-report'].forEach((id, i) => {
+      document.getElementById(id).classList.toggle('active', i + 1 === n);
+    });
+  }
+
+  function showError(id, msg) {
+    const el = document.getElementById(id);
+    el.textContent = '✕ ' + msg;
+    el.style.display = 'block';
+  }
+
+  function clearError(id) {
+    const el = document.getElementById(id);
+    el.style.display = 'none';
+    el.textContent = '';
+  }
+
+  // ── Upload: GitHub ────────────────────────────────────────────────────────
+  async function handleGithub() {
+    const url = document.getElementById('github-url').value.trim();
+    if (!url) return;
+    clearError('upload-error');
+
+    const btn = document.getElementById('github-btn');
+    btn.disabled = true;
+    btn.textContent = 'Fetching…';
+
+    try {
+      const res = await fetch(`${API}/ingest/github`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ github_url: url }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || res.statusText);
+      }
+      const data = await res.json();
+      // ingest_github returns { repo_id, ... } — adjust key if yours differs
+      state.repoId = data.repo_id ?? data.id ?? data.repo_name;
+      state.sourceName = url.split('/').slice(-2).join('/');
+      afterIngest();
+    } catch (e) {
+      showError('upload-error', e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Fetch →';
+    }
+  }
+
+  // ── Upload: ZIP ───────────────────────────────────────────────────────────
+  document.getElementById('file-input').addEventListener('change', async function (e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    clearError('upload-error');
+    await handleZipUpload(file);
+    this.value = '';
+  });
+
+  async function handleZipUpload(file) {
+    const btn = document.querySelector('#drop-zone .btn-primary');
+    btn.disabled = true;
+    btn.textContent = 'Uploading…';
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${API}/ingest/zip`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || res.statusText);
+      }
+      const data = await res.json();
+      state.repoId = data.repo_id ?? data.id ?? data.repo_name;
+      state.sourceName = file.name;
+      afterIngest();
+    } catch (e) {
+      showError('upload-error', e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Choose ZIP file';
+    }
+  }
+
+  // ── Drag & drop ───────────────────────────────────────────────────────────
+  const dz = document.getElementById('drop-zone');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault();
+    dz.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file && file.name.endsWith('.zip')) handleZipUpload(file);
+    else showError('upload-error', 'Please drop a .zip file.');
+  });
+
+  function afterIngest() {
+    document.getElementById('source-name').textContent = state.sourceName;
+    document.getElementById('source-repo-id').textContent = state.repoId;
+    goStep(2);
+  }
+
+  // ── Configure ─────────────────────────────────────────────────────────────
+  function selectMode(m) {
+    state.mode = m;
+    document.getElementById('mode-auto').classList.toggle('selected', m === 'auto');
+    document.getElementById('mode-manual').classList.toggle('selected', m === 'manual');
+  }
+
+  function selectPersona(p) {
+    state.persona = p;
+    ['tech','ceo','pub'].forEach(x =>
+      document.getElementById('persona-' + x).classList.toggle('selected', x === p)
+    );
+  }
+
+  // ── Audit ─────────────────────────────────────────────────────────────────
+  async function startAudit() {
+    goStep(3);
+    clearError('scan-error');
+    resetTerminal();
+
+    // Fake progress ticks while real request runs
+    const ticks = [
+      [0,    'dim',  '→ connecting to pragma backend…'],
+      [400,  'dim',  '→ running semgrep p/security-audit…'],
+      [1200, 'dim',  '→ embedding code chunks into chromadb…'],
+      [2200, 'info', '→ querying rag knowledge base (owasp + cwe)…'],
+      [3200, 'dim',  '→ routing to llm judge…'],
+    ];
+    ticks.forEach(([delay, cls, msg]) => addLog(msg, cls, delay));
+    setProgress(10, 0);
+    setProgress(35, 1200);
+    setProgress(60, 2200);
+    setProgress(80, 3200);
+    setScanStatus('Scanning — this may take a minute…', 0);
+
+    try {
+      const res = await fetch(`${API}/audit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo_id: state.repoId }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || res.statusText);
+      }
+
+      const data = await res.json();
+      // data = { repo_id, findings: [...] }
+      state.findings = normalizeFindings(data.findings ?? data);
+
+      addLog(`✓ ${state.findings.length} finding(s) returned`, 'ok', 0);
+      setProgress(100, 0);
+      setScanStatus('Complete.', 0);
+      document.getElementById('terminal-title').textContent = 'pragma — done';
+
+      setTimeout(() => {
+        buildReport();
+        goStep(4);
+      }, 900);
+
+    } catch (e) {
+      addLog('✕ audit failed: ' + e.message, 'err', 0);
+      setProgress(0, 0);
+      setScanStatus('Audit failed.', 0);
+      showError('scan-error', e.message + ' — check that the backend is running and CORS is configured.');
+    }
+  }
+
+  /**
+   * Normalize AuditResult list from FastAPI → flat frontend shape.
+   *
+   * AuditResult (from models.py, serialized by FastAPI):
+   * {
+   *   finding:  { check_id, msg, path, line, severity, ... }
+   *   relevant_chunks: [...]
+   *   technical: { explanation, fix, fixed_code }
+   *   ceo:       { explanation, fix, fixed_code }
+   *   public:    { explanation, fix, fixed_code }
+   * }
+   */
+  function normalizeFindings(raw) {
+  // map semgrep severities → your severity buckets
+  const sevMap = {
+    error:   'critical',
+    warning: 'high',
+    info:    'low',
+    // pass-through in case backend already normalized
+    critical: 'critical',
+    high:     'high',
+    medium:   'medium',
+    low:      'low',
+  };
+
+  return raw.map((r, i) => {
+    const f = r.finding ?? {};
+    const rawSev = (f.severity ?? 'low').toLowerCase();
+    return {
+      id:        i,
+      severity:  sevMap[rawSev] ?? 'low',
+      title:     f.check_id ?? f.rule_id ?? 'Unknown finding',
+      file:      f.path ?? f.file ?? '',
+      line:      f.stLine ?? f.line ?? '',
+      vuln_code: '',
+      fix_code:  r.technical?.fixed_code ?? r.ceo?.fixed_code ?? '',
+      technical: [r.technical?.explanation, r.technical?.fix].filter(Boolean).join('\n\n'),
+      executive: [r.ceo?.explanation,       r.ceo?.fix      ].filter(Boolean).join('\n\n'),
+      public:    [r.public?.explanation,    r.public?.fix   ].filter(Boolean).join('\n\n'),
+    };
+  });
+}
+
+  // ── Terminal helpers ───────────────────────────────────────────────────────
+  function resetTerminal() {
+    document.getElementById('terminal-body').innerHTML = '';
+    document.getElementById('progress-fill').style.width = '0%';
+    document.getElementById('terminal-title').textContent = 'pragma — scanning';
+  }
+
+  function addLog(msg, cls, delay) {
+    const fn = () => {
+      const tb = document.getElementById('terminal-body');
+      const ts = new Date().toTimeString().slice(0, 8);
+      const line = document.createElement('div');
+      line.className = 'log-line';
+      line.innerHTML = `<span class="log-time">${ts}</span><span class="log-msg ${cls}">${esc(msg)}</span>`;
+      tb.appendChild(line);
+      tb.scrollTop = tb.scrollHeight;
+    };
+    delay > 0 ? setTimeout(fn, delay) : fn();
+  }
+
+  function setProgress(pct, delay) {
+    const fn = () => { document.getElementById('progress-fill').style.width = pct + '%'; };
+    delay > 0 ? setTimeout(fn, delay) : fn();
+  }
+
+  function setScanStatus(msg, delay) {
+    const fn = () => { document.getElementById('scan-status').textContent = msg; };
+    delay > 0 ? setTimeout(fn, delay) : fn();
+  }
+
+  // ── Report ────────────────────────────────────────────────────────────────
+  function buildReport() {
+    const findings = state.findings;
+    const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+    findings.forEach(f => { if (counts[f.severity] !== undefined) counts[f.severity]++; });
+
+    document.getElementById('stats-row').innerHTML = `
+      <div class="stat-card"><div class="stat-label">Critical</div><div class="stat-val crit">${counts.critical}</div></div>
+      <div class="stat-card"><div class="stat-label">High</div>    <div class="stat-val high">${counts.high}</div></div>
+      <div class="stat-card"><div class="stat-label">Medium</div>  <div class="stat-val warn">${counts.medium}</div></div>
+      <div class="stat-card"><div class="stat-label">Low</div>     <div class="stat-val info">${counts.low}</div></div>
+    `;
+
+    buildFilters(findings);
+    renderFindings();
+
+    // set default persona view to match configure selection
+    const viewMap = { tech: 'technical', ceo: 'executive', pub: 'public' };
+    state.personaView = viewMap[state.persona] ?? 'technical';
+    document.querySelectorAll('.persona-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.textContent.toLowerCase() === state.personaView);
+    });
+    renderFindings();
+  }
+
+  function buildFilters(findings) {
+    const available = ['all', ...new Set(findings.map(f => f.severity))];
+    document.getElementById('filter-row').innerHTML = available.map(s =>
+      `<button class="filter-btn ${s === 'all' ? 'active' : ''}" onclick="applyFilter('${s}', this)">${s}</button>`
+    ).join('');
+  }
+
+  function applyFilter(sev, btn) {
+    state.filter = sev;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderFindings();
+  }
+
+  function switchPersonaView(view, btn) {
+    state.personaView = view;
+    document.querySelectorAll('.persona-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderFindings();
+  }
+
+  function renderFindings() {
+    const filtered = state.filter === 'all'
+      ? state.findings
+      : state.findings.filter(f => f.severity === state.filter);
+
+    const list = document.getElementById('findings-list');
+    const pv = state.personaView;
+    const showCode = true;
+
+    if (!filtered.length) {
+      list.innerHTML = `<div class="empty-state"><div class="big">0</div><p>No findings for this filter.</p></div>`;
+      return;
+    }
+
+    list.innerHTML = filtered.map(f => {
+      const explanation = pv === 'technical' ? f.technical
+                        : pv === 'executive'  ? f.executive
+                        : f.public;
+      return `
+        <div class="finding-card sev-${f.severity}" id="fc-${f.id}">
+          <div class="finding-header" onclick="toggleFinding('${f.id}')">
+            <span class="sev-badge ${f.severity}">${f.severity}</span>
+            <span class="finding-title">${esc(f.title)}</span>
+            ${f.file ? `<span class="finding-file">${esc(f.file)}${f.line ? ':' + f.line : ''}</span>` : ''}
+            <span class="finding-chevron">▶</span>
+          </div>
+          <div class="finding-body">
+            ${explanation ? `
+              <div class="finding-section">
+                <div class="finding-section-label">What it is</div>
+                <div class="explanation-block">${esc(explanation)}</div>
+              </div>` : ''}
+            ${showCode && f.vuln_code ? `
+              <div class="finding-section">
+                <div class="finding-section-label">Vulnerable code</div>
+                <div class="code-block">${esc(f.vuln_code)}</div>
+              </div>` : ''}
+            ${showCode && f.fix_code ? `
+              <div class="finding-section">
+                <div class="finding-section-label">Suggested fix</div>
+                <div class="fix-block">${esc(f.fix_code)}</div>
+              </div>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function toggleFinding(id) {
+    document.getElementById('fc-' + id).classList.toggle('open');
+  }
+
+  // ── Download raw JSON ─────────────────────────────────────────────────────
+  function downloadJSON() {
+    const blob = new Blob([JSON.stringify(state.findings, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `pragma_${state.repoId ?? 'report'}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  // ── Util ──────────────────────────────────────────────────────────────────
+  function esc(s) {
+    if (!s) return '';
+    return String(s)
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;');
+  }
+</script>
+</body>
+</html>

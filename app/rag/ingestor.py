@@ -8,6 +8,7 @@ import os
 import shutil
 import stat
 REPOS_DIR = "repos"
+import tempfile
 def force_rmtree(path):
     def onerror(func, path, exc_info):
         # Clear the read-only bit and retry

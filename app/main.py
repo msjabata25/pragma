@@ -1,5 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request
-from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -8,9 +8,9 @@ from slowapi.errors import RateLimitExceeded
 import tempfile
 import os
 from pathlib import Path
+import asyncio
 
 from app.agent.loop import run_async
-from app.agent.reporter import generate_report
 from app.agent.models import Persona
 from app.rag.ingestor import ingest_zip, ingest_github
 from app.rag.embedder import embed_query
@@ -23,6 +23,18 @@ app = FastAPI(title="Pragma AI Code Auditor")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://msjabata25.github.io",
+        "http://localhost:5500",
+        "http://127.0.0.1:5500",
+        "http://localhost:3000",
+    ],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
 
 # --- Schemas ---
 
@@ -33,6 +45,9 @@ class QueryRequest(BaseModel):
     repo_id: str
     query: str
     n_results: int = 5
+
+class AuditRequest(BaseModel):
+    repo_id: str
 
 
 # --- Helpers ---
@@ -63,7 +78,7 @@ async def ingest_zip_endpoint(request: Request, file: UploadFile = File(...)):
         with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
             tmp.write(await file.read())
             tmp_path = tmp.name
-        return ingest_zip(tmp_path)
+        return await asyncio.to_thread(ingest_zip, tmp_path)  # ← wrap it
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
@@ -82,19 +97,50 @@ async def query_endpoint(request: Request, body: QueryRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/audit/report/download")
+@app.post("/audit")
 @limiter.limit("5/hour")
-async def download_report(
-    request: Request,
-    repo_id: str,
-    mode: Persona = Query(default="technical"),
-):
-    repo_path = _get_repo_path(repo_id)
-    results = await run_async(str(repo_path))
-    repo_name = repo_path.name
-    html_path = generate_report(results, mode=mode, repo_name=repo_name, output_dir="output")
-    return FileResponse(
-        path=html_path,
-        media_type="text/html",
-        filename=f"pragma_{mode}_{repo_name}.html",
-    )
+async def audit_endpoint(request: Request, body: AuditRequest):
+    """
+    Run a full audit on an already-ingested repo.
+    Returns raw findings JSON — the frontend owns rendering.
+    """
+    repo_path = _get_repo_path(body.repo_id)
+    if not repo_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Repo '{body.repo_id}' not found. Ingest it first."
+        )
+    try:
+        results = await run_async(str(repo_path))
+        return {
+            "repo_id": body.repo_id,
+            "findings": [
+                {
+                    "finding": {
+                        "check_id":  r.finding.check_id,
+                        "msg":       r.finding.msg,
+                        "path":      r.finding.path,
+                        "stLine":    r.finding.stLine,
+                        "severity":  r.finding.severity,
+                    },
+                    "technical": {
+                        "explanation": r.technical.explanation,
+                        "fix":         r.technical.fix,
+                        "fixed_code":  r.technical.fixed_code,
+                    },
+                    "ceo": {
+                        "explanation": r.ceo.explanation,
+                        "fix":         r.ceo.fix,
+                        "fixed_code":  r.ceo.fixed_code,
+                    },
+                    "public": {
+                        "explanation": r.public.explanation,
+                        "fix":         r.public.fix,
+                        "fixed_code":  r.public.fixed_code,
+                    },
+                }
+                for r in results
+            ],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
