@@ -5,7 +5,11 @@ import time
 from .chunker import CodeChunk
 from dotenv import load_dotenv
 
+
 load_dotenv()
+
+os.environ["SENTENCE_TRANSFORMERS_HOME"] = "/tmp/st_cache"  # ← here
+os.environ["HF_HOME"] = "/tmp/hf_cache"          
 
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 EMBEDDING_MODEL = "models/gemini-embedding-001"

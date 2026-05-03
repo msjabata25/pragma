@@ -12,7 +12,7 @@ def scan(repo_path: str) -> dict:
             capture_output=True,
             encoding="utf-8",
             errors="ignore",
-            env={**__import__("os").environ, "PYTHONIOENCODING": "utf-8"}
+            env={**__import__("os").environ, "PYTHONIOENCODING": "utf-8", "SEMGREP_RULES_CACHE": "/tmp/semgrep_cache"}
         )
         print(f"[DEBUG] semgrep returncode: {result.returncode}")
         print(f"[DEBUG] semgrep stderr: {result.stderr[:500]}")
