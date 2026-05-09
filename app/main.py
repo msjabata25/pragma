@@ -32,6 +32,7 @@ app.add_middleware(
         "http://localhost:3000",
         "https://msjabata25.github.io/pragma/"
     ],
+    allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
@@ -145,3 +146,7 @@ async def audit_endpoint(request: Request, body: AuditRequest):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}

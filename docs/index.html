@@ -399,6 +399,29 @@
     filter: 'all',
     personaView: 'technical',
   };
+  async function wakeAndAudit(payload) {
+    const BASE = "https://pragma-b4md.onrender.com";
+
+    // Ping first to wake the instance
+    try {
+        await fetch(`${BASE}/health`, { method: "GET" });
+    } catch (_) {}  // expected to fail or be slow, that's fine
+
+    // Retry the actual audit up to 3 times with backoff
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            const res = await fetch(`${BASE}/audit`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+            if (res.ok) return await res.json();
+        } catch (err) {
+            if (attempt === 3) throw err;
+            await new Promise(r => setTimeout(r, attempt * 2000)); // 2s, 4s
+        }
+    }
+}
 
   // ── Step navigation ───────────────────────────────────────────────────────
   function goStep(n) {
